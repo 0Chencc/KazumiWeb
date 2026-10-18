@@ -37,7 +37,7 @@ import 'package:kazumi_web/utils/http_headers.dart';
 /// 视频源解析、弹幕聚合全部在本进程完成；观看历史与收藏自持。
 /// 对浏览器暴露的 /api/* 契约与旧实现完全一致，Web UI 零改动。
 /// 应用版本（与 pubspec.yaml 保持一致，web 端"关于"页展示用）。
-const String appVersion = '0.1.0';
+const String appVersion = '0.2.0';
 
 class KazumiWebServer {
   KazumiWebServer({

@@ -1,6 +1,6 @@
 name: kazumi_web
 description: Standalone Kazumi web server — browse & watch anime from any LAN browser, powered by the Kazumi rule ecosystem.
-version: 0.1.0
+version: 0.2.0
 publish_to: none
 
 environment:
