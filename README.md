@@ -22,8 +22,8 @@ KazumiWeb 换了一条路：让电脑来跑规则引擎和视频解析，iPhone 
 服务端（运行本程序的设备）：
 
 - Windows 10 及以上
-- Linux（实验性，Docker / xvfb 部署）
-- macOS（实验性，尚未真机验证）
+- macOS 13 及以上
+- Linux（支持 Docker 部署，x64 / arm64）
 
 客户端（访问网页的设备）：
 
@@ -153,10 +153,10 @@ A: 视频源解析依赖 WebView，这是规则引擎的硬依赖。「无头」
 
 ```sh
 flutter pub get
-flutter run -d windows
+flutter run -d windows        # 或 -d macos / -d linux
 ```
 
-发行构建（弹幕凭证可选）：
+发行构建（弹幕凭证可选，`windows` 换成 `macos` / `linux` 即对应平台）：
 
 ```sh
 flutter build windows --release \
@@ -164,7 +164,11 @@ flutter build windows --release \
   --dart-define=DANDANAPI_KEY=<key>
 ```
 
-发行布局：`build/windows/x64/runner/Release/` 全部内容，加上 `web/` 目录放在可执行文件旁边。
+发行布局：
+
+- Windows：`build/windows/x64/runner/Release/` 全部内容，加上 `web/` 目录放在可执行文件旁边
+- Linux：`build/linux/<x64|arm64>/release/bundle/` 全部内容，加上 `web/` 目录放在可执行文件旁边
+- macOS：`build/macos/Build/Products/Release/kazumi_web.app`，`web/` 已在构建时打包进 `Contents/Resources/`，无需额外处理
 
 ### 目录结构
 
