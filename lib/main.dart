@@ -126,7 +126,10 @@ class AppState extends ChangeNotifier {
       // 首选 mDNS 主机名（Windows 10+ 系统自带响应，iOS/macOS 原生支持
       // .local 解析），手机不用记 IP；IP 地址保留作备选（部分安卓浏览器
       // 不支持 mDNS）。
-      final mdnsHost = '${Platform.localHostname.toLowerCase()}.local';
+      // macOS 的 localHostname 本身已带 .local
+      final hostname = Platform.localHostname.toLowerCase();
+      final mdnsHost =
+          hostname.endsWith('.local') ? hostname : '$hostname.local';
       lanAddresses = [
         mdnsHost,
         ...await KazumiWebServer.enumerateLanIPv4(),
@@ -230,11 +233,13 @@ class AppState extends ChangeNotifier {
   }
 
   /// Web UI 静态目录：优先可执行文件旁的 web/（发行布局），
+  /// macOS 在 .app 的 Contents/Resources/web/（Xcode 构建阶段复制），
   /// 开发期回退到项目根的 web/。
   Future<Directory> _locateWebDir() async {
     final exeDir = File(Platform.resolvedExecutable).parent.path;
     final candidates = [
       Directory(p.join(exeDir, 'web')),
+      Directory(p.join(exeDir, '..', 'Resources', 'web')),
       Directory(p.join(Directory.current.path, 'web')),
     ];
     for (final dir in candidates) {

@@ -45,6 +45,8 @@ class TrayService with TrayListener {
   }
 
   static String _iconPath() {
+    // macOS 端 tray_manager 经 rootBundle 读取，传 asset key
+    if (Platform.isMacOS) return 'assets/images/logo.png';
     if (Platform.isWindows) {
       // runner 资源里的 ico 随构建产物分发
       return p.join(
