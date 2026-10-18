@@ -21,14 +21,18 @@ COPY pubspec.yaml pubspec.lock ./
 RUN flutter pub get
 COPY . .
 
-# 弹幕（dandanplay）凭证，缺省时弹幕 403、其余功能不受影响：
+# 弹幕（dandanplay）与 Bangumi 镜像检索凭证，缺省时对应功能不可用、其余不受影响：
 #   docker build --build-arg DANDANAPI_APPID=... --build-arg DANDANAPI_KEY=... .
 ARG DANDANAPI_APPID=
 ARG DANDANAPI_KEY=
+ARG KAZUMI_APPID=
+ARG KAZUMI_KEY=
 RUN flutter config --enable-linux-desktop \
     && flutter build linux --release \
          --dart-define=DANDANAPI_APPID="${DANDANAPI_APPID}" \
          --dart-define=DANDANAPI_KEY="${DANDANAPI_KEY}" \
+         --dart-define=KAZUMI_APPID="${KAZUMI_APPID}" \
+         --dart-define=KAZUMI_KEY="${KAZUMI_KEY}" \
     && mv build/linux/*/release/bundle /bundle
 
 # ---- 运行阶段：最小运行时 + xvfb ----

@@ -71,7 +71,22 @@ KazumiWeb 换了一条路：让电脑来跑规则引擎和视频解析，iPhone 
 
 ## 下载
 
-通过本页面 [Releases](https://github.com/0Chencc/KazumiWeb/releases) 选项卡下载。首个版本发布前，请参照 [开发](#开发) 一节从源码构建。
+通过本页面 [Releases](https://github.com/0Chencc/KazumiWeb/releases) 选项卡下载对应平台的压缩包：
+
+| 平台 | 文件 |
+| --- | --- |
+| Windows | `KazumiWeb-<版本>-windows-x64.zip` |
+| macOS（Intel / Apple Silicon 通用） | `KazumiWeb-<版本>-macos-universal.zip` |
+| Linux | `KazumiWeb-<版本>-linux-x64.tar.gz` / `KazumiWeb-<版本>-linux-arm64.tar.gz` |
+| Docker | `ghcr.io/0chencc/kazumiweb`，见 [无头模式与 Docker](#无头模式与-docker) |
+
+macOS 版未经 Apple 公证，首次打开会被系统拦截：在「系统设置 → 隐私与安全性」底部点击「仍要打开」，或执行 `xattr -dr com.apple.quarantine kazumi_web.app`。
+
+Linux 版基于 Ubuntu 24.04 构建（需 Ubuntu 24.04 / Debian 13 及以上），运行前安装依赖：
+
+```sh
+sudo apt install libgtk-3-0t64 libwebkit2gtk-4.1-0 libayatana-appindicator3-1
+```
 
 ## 使用
 
@@ -100,6 +115,9 @@ KAZUMI_WEB_HEADLESS=1 KAZUMI_WEB_PORT=8333 ./kazumi_web
 Docker（Linux 容器，xvfb 虚拟显示承载 Flutter 与 webkitgtk WebView）：
 
 ```sh
+docker run -d --network host -v kazumi-data:/data ghcr.io/0chencc/kazumiweb:latest
+
+# 或从源码构建
 docker compose up -d          # 或 docker build -t kazumi-web .
 ```
 

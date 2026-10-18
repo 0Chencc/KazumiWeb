@@ -1,6 +1,6 @@
-# 推送 v*.*.* 标签即发布：校验版本号 → 分析与测试 → Windows 构建 → 打包上传 Release。
+# 推送 v*.*.* 标签即发布：校验版本号 → 分析与测试 → 各平台构建 → 打包上传 Release，并推送 Docker 镜像。
 #   git tag v0.3.0 && git push origin v0.3.0
-# 标签含 "-"（如 v0.3.0-beta.1）时发布为预发布版本。
+# 标签含 "-"（如 v0.3.0-beta.1）时发布为预发布版本，Docker 镜像不更新 latest。
 name: Release
 
 on:
@@ -10,9 +10,20 @@ on:
 
 permissions:
   contents: write
+  packages: write
+
+env:
+  FLUTTER_VERSION: 3.44.0
+  IMAGE: ghcr.io/0chencc/kazumiweb
+  # 凭证缺省时弹幕与镜像检索签名不可用，其余功能不受影响
+  DART_DEFINES: >-
+    --dart-define=DANDANAPI_APPID=${{ secrets.DANDANAPI_APPID }}
+    --dart-define=DANDANAPI_KEY=${{ secrets.DANDANAPI_KEY }}
+    --dart-define=KAZUMI_APPID=${{ secrets.KAZUMI_APPID }}
+    --dart-define=KAZUMI_KEY=${{ secrets.KAZUMI_KEY }}
 
 jobs:
-  windows:
+  verify:
     runs-on: windows-latest
     steps:
       - uses: actions/checkout@v7
@@ -34,21 +45,25 @@ jobs:
       - uses: subosito/flutter-action@v2
         with:
           channel: stable
-          flutter-version: 3.44.0
+          flutter-version: ${{ env.FLUTTER_VERSION }}
           cache: true
 
       - run: flutter pub get
       - run: flutter analyze
       - run: flutter test --exclude-tags network
 
-      # 凭证缺省时弹幕与镜像检索签名不可用，其余功能不受影响
-      - name: 构建
-        run: >
-          flutter build windows --release
-          --dart-define=DANDANAPI_APPID=${{ secrets.DANDANAPI_APPID }}
-          --dart-define=DANDANAPI_KEY=${{ secrets.DANDANAPI_KEY }}
-          --dart-define=KAZUMI_APPID=${{ secrets.KAZUMI_APPID }}
-          --dart-define=KAZUMI_KEY=${{ secrets.KAZUMI_KEY }}
+  windows:
+    needs: verify
+    runs-on: windows-latest
+    steps:
+      - uses: actions/checkout@v7
+      - uses: subosito/flutter-action@v2
+        with:
+          channel: stable
+          flutter-version: ${{ env.FLUTTER_VERSION }}
+          cache: true
+
+      - run: flutter build windows --release ${{ env.DART_DEFINES }}
 
       # 发行布局：Release 目录全部内容 + web/ 放在可执行文件旁
       - name: 打包
@@ -59,12 +74,165 @@ jobs:
           Copy-Item web "$out/web" -Recurse
           Compress-Archive -Path $out -DestinationPath "KazumiWeb-$env:GITHUB_REF_NAME-windows-x64.zip"
 
+      - uses: actions/upload-artifact@v7
+        with:
+          name: pkg-windows
+          path: KazumiWeb-*.zip
+
+  macos:
+    needs: verify
+    runs-on: macos-latest
+    steps:
+      - uses: actions/checkout@v7
+      - uses: subosito/flutter-action@v2
+        with:
+          channel: stable
+          flutter-version: ${{ env.FLUTTER_VERSION }}
+          cache: true
+
+      # 产物为 x64 + arm64 通用二进制，ad-hoc 签名；web/ 由 Xcode 构建阶段打进 .app
+      - run: flutter build macos --release ${{ env.DART_DEFINES }}
+
+      # ditto 保留 framework 内的符号链接，zip 会破坏签名
+      - name: 打包
+        run: |
+          ditto -c -k --keepParent build/macos/Build/Products/Release/kazumi_web.app \
+            "KazumiWeb-$GITHUB_REF_NAME-macos-universal.zip"
+
+      - uses: actions/upload-artifact@v7
+        with:
+          name: pkg-macos
+          path: KazumiWeb-*.zip
+
+  linux:
+    needs: verify
+    strategy:
+      matrix:
+        include:
+          - { runner: ubuntu-24.04, arch: x64 }
+          - { runner: ubuntu-24.04-arm, arch: arm64 }
+    runs-on: ${{ matrix.runner }}
+    steps:
+      - uses: actions/checkout@v7
+
+      - name: 安装构建依赖
+        run: |
+          sudo apt-get update
+          sudo apt-get install -y --no-install-recommends \
+            clang cmake ninja-build pkg-config \
+            libgtk-3-dev libwebkit2gtk-4.1-dev libayatana-appindicator3-dev
+
+      # 官方发行包只有 x64（flutter-action 依赖它），按 tag 从 git 安装以同时支持 arm64
+      - name: 安装 Flutter
+        run: |
+          git clone --depth 1 -b "$FLUTTER_VERSION" https://github.com/flutter/flutter.git "$RUNNER_TEMP/flutter"
+          echo "$RUNNER_TEMP/flutter/bin" >> "$GITHUB_PATH"
+
+      - run: flutter build linux --release ${{ env.DART_DEFINES }}
+
+      # 发行布局：bundle 全部内容 + web/ 放在可执行文件旁
+      - name: 打包
+        run: |
+          cp -r build/linux/${{ matrix.arch }}/release/bundle KazumiWeb
+          cp -r web KazumiWeb/web
+          tar -czf "KazumiWeb-$GITHUB_REF_NAME-linux-${{ matrix.arch }}.tar.gz" KazumiWeb
+
+      - uses: actions/upload-artifact@v7
+        with:
+          name: pkg-linux-${{ matrix.arch }}
+          path: KazumiWeb-*.tar.gz
+
+  # 各架构在原生 runner 上构建并按 digest 推送，再合并为多架构清单（QEMU 模拟跑 Flutter 构建既慢又不稳）
+  docker:
+    needs: verify
+    strategy:
+      matrix:
+        include:
+          - { runner: ubuntu-24.04, arch: amd64 }
+          - { runner: ubuntu-24.04-arm, arch: arm64 }
+    runs-on: ${{ matrix.runner }}
+    steps:
+      - uses: actions/checkout@v7
+      - uses: docker/setup-buildx-action@v4
+      - uses: docker/login-action@v4
+        with:
+          registry: ghcr.io
+          username: ${{ github.actor }}
+          password: ${{ secrets.GITHUB_TOKEN }}
+
+      - id: build
+        uses: docker/build-push-action@v7
+        with:
+          context: .
+          platforms: linux/${{ matrix.arch }}
+          build-args: |
+            DANDANAPI_APPID=${{ secrets.DANDANAPI_APPID }}
+            DANDANAPI_KEY=${{ secrets.DANDANAPI_KEY }}
+            KAZUMI_APPID=${{ secrets.KAZUMI_APPID }}
+            KAZUMI_KEY=${{ secrets.KAZUMI_KEY }}
+          outputs: type=image,name=${{ env.IMAGE }},push-by-digest=true,name-canonical=true,push=true
+
+      - name: 导出 digest
+        env:
+          DIGEST: ${{ steps.build.outputs.digest }}
+        run: |
+          mkdir -p "$RUNNER_TEMP/digests"
+          touch "$RUNNER_TEMP/digests/${DIGEST#sha256:}"
+
+      - uses: actions/upload-artifact@v7
+        with:
+          name: digest-${{ matrix.arch }}
+          path: ${{ runner.temp }}/digests/*
+
+  docker-manifest:
+    needs: docker
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/download-artifact@v8
+        with:
+          path: ${{ runner.temp }}/digests
+          pattern: digest-*
+          merge-multiple: true
+
+      - uses: docker/setup-buildx-action@v4
+      - uses: docker/login-action@v4
+        with:
+          registry: ghcr.io
+          username: ${{ github.actor }}
+          password: ${{ secrets.GITHUB_TOKEN }}
+
+      # v0.3.0 → 0.3.0、0.3、latest；预发布只打完整版本号
+      - id: meta
+        uses: docker/metadata-action@v6
+        with:
+          images: ${{ env.IMAGE }}
+          tags: |
+            type=semver,pattern={{version}}
+            type=semver,pattern={{major}}.{{minor}}
+
+      - name: 合并多架构清单
+        working-directory: ${{ runner.temp }}/digests
+        run: |
+          docker buildx imagetools create \
+            $(jq -cr '.tags | map("-t " + .) | join(" ")' <<< "$DOCKER_METADATA_OUTPUT_JSON") \
+            $(printf "$IMAGE@sha256:%s " *)
+
+  release:
+    needs: [windows, macos, linux, docker-manifest]
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v7
+      - uses: actions/download-artifact@v8
+        with:
+          path: dist
+          pattern: pkg-*
+          merge-multiple: true
+
       - name: 发布
-        shell: bash
         env:
           GH_TOKEN: ${{ github.token }}
         run: |
           pre=""
           case "$GITHUB_REF_NAME" in *-*) pre="--prerelease" ;; esac
-          gh release create "$GITHUB_REF_NAME" KazumiWeb-*-windows-x64.zip \
+          gh release create "$GITHUB_REF_NAME" dist/* \
             --title "$GITHUB_REF_NAME" --generate-notes --verify-tag $pre
