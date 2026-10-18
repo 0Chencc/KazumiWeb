@@ -1,4 +1,4 @@
-# 每次推送 / PR 必须通过：分析、测试、Windows 构建。
+# 每次推送 / PR 必须通过：分析、测试、Windows / macOS / Linux 构建。
 # 仅改动 Markdown 的提交不触发（但会被 guard.yml 拒绝）。
 name: CI
 
@@ -31,3 +31,37 @@ jobs:
       - run: flutter analyze
       - run: flutter test --exclude-tags network
       - run: flutter build windows --release
+
+  # 分析与测试不依赖平台，上面已覆盖；这里只守住各平台构建
+  macos:
+    runs-on: macos-latest
+    steps:
+      - uses: actions/checkout@v7
+
+      - uses: subosito/flutter-action@v2
+        with:
+          channel: stable
+          flutter-version: 3.44.0
+          cache: true
+
+      - run: flutter build macos --release
+
+  linux:
+    runs-on: ubuntu-24.04
+    steps:
+      - uses: actions/checkout@v7
+
+      - name: 安装构建依赖
+        run: |
+          sudo apt-get update
+          sudo apt-get install -y --no-install-recommends \
+            clang cmake ninja-build pkg-config \
+            libgtk-3-dev libwebkit2gtk-4.1-dev libayatana-appindicator3-dev
+
+      - uses: subosito/flutter-action@v2
+        with:
+          channel: stable
+          flutter-version: 3.44.0
+          cache: true
+
+      - run: flutter build linux --release
