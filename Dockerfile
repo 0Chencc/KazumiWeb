@@ -9,11 +9,11 @@
 # 详见 docs/deployment.md（含 --network host 与端口映射的取舍）。
 
 # ---- 构建阶段：Flutter SDK + Linux 桌面工具链 ----
-FROM ghcr.io/cirruslabs/flutter:3.44.6 AS build
+FROM ghcr.io/cirruslabs/flutter:3.44.0 AS build
 
 RUN apt-get update && apt-get install -y --no-install-recommends \
       clang cmake ninja-build pkg-config \
-      libgtk-3-dev libwebkit2gtk-4.1-dev \
+      libgtk-3-dev libwebkit2gtk-4.1-dev libayatana-appindicator3-dev \
     && rm -rf /var/lib/apt/lists/*
 
 WORKDIR /src
@@ -28,20 +28,22 @@ ARG DANDANAPI_KEY=
 RUN flutter config --enable-linux-desktop \
     && flutter build linux --release \
          --dart-define=DANDANAPI_APPID="${DANDANAPI_APPID}" \
-         --dart-define=DANDANAPI_KEY="${DANDANAPI_KEY}"
+         --dart-define=DANDANAPI_KEY="${DANDANAPI_KEY}" \
+    && mv build/linux/*/release/bundle /bundle
 
 # ---- 运行阶段：最小运行时 + xvfb ----
-FROM debian:bookworm-slim
+# 必须与构建镜像同发行版（cirruslabs/flutter 基于 Ubuntu 24.04），否则 glib 等 ABI 不匹配
+FROM ubuntu:24.04
 
 RUN apt-get update && apt-get install -y --no-install-recommends \
-      libgtk-3-0 libwebkit2gtk-4.1-0 \
-      xvfb xauth \
+      libgtk-3-0t64 libwebkit2gtk-4.1-0 libayatana-appindicator3-1 \
+      xvfb xauth tini \
       fonts-noto-cjk \
       ca-certificates curl \
     && rm -rf /var/lib/apt/lists/*
 
 WORKDIR /app
-COPY --from=build /src/build/linux/x64/release/bundle/ /app/
+COPY --from=build /bundle/ /app/
 # web/ 静态资源需在可执行文件旁（发行布局约定）
 COPY --from=build /src/web/ /app/web/
 
@@ -57,4 +59,5 @@ HEALTHCHECK --interval=30s --timeout=5s --start-period=20s \
   CMD curl -fs "http://127.0.0.1:${KAZUMI_WEB_PORT}/api/about" || exit 1
 
 # xvfb-run -a：自动挑选空闲 display，虚拟屏幕供 Flutter/webkitgtk 渲染
-ENTRYPOINT ["xvfb-run", "-a", "-s", "-screen 0 1280x720x24", "/app/kazumi_web"]
+# tini 作 PID 1：xvfb-run 当 PID 1 时收不到 Xvfb 的就绪信号会永久挂起
+ENTRYPOINT ["tini", "--", "xvfb-run", "-a", "-s", "-screen 0 1280x720x24", "/app/kazumi_web"]
