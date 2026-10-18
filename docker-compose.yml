@@ -1,0 +1,19 @@
+# KazumiWeb —— docker compose up -d
+# 详见 docs/deployment.md
+services:
+  kazumi-web:
+    build: .
+    container_name: kazumi-web
+    # host 网络：局域网设备可直接访问，且保留 mDNS 的可能性。
+    # 不想用 host 网络时，注释掉 network_mode 并启用 ports。
+    network_mode: host
+    # ports:
+    #   - "8333:8333"
+    environment:
+      - KAZUMI_WEB_PORT=8333
+    volumes:
+      - kazumi-data:/data
+    restart: unless-stopped
+
+volumes:
+  kazumi-data:

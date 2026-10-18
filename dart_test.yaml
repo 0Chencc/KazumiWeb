@@ -1,0 +1,3 @@
+tags:
+  network:
+    description: 访问真实外网的诊断用例，CI 以 --exclude-tags network 跳过

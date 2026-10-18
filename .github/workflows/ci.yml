@@ -1,0 +1,33 @@
+# 每次推送 / PR 必须通过：分析、测试、Windows 构建。
+# 仅改动 Markdown 的提交不触发（但会被 guard.yml 拒绝）。
+name: CI
+
+on:
+  push:
+    branches: ['**']
+    paths-ignore:
+      - '**.md'
+  pull_request:
+    paths-ignore:
+      - '**.md'
+
+concurrency:
+  group: ci-${{ github.ref }}
+  cancel-in-progress: true
+
+jobs:
+  build:
+    runs-on: windows-latest
+    steps:
+      - uses: actions/checkout@v7
+
+      - uses: subosito/flutter-action@v2
+        with:
+          channel: stable
+          flutter-version: 3.44.6
+          cache: true
+
+      - run: flutter pub get
+      - run: flutter analyze
+      - run: flutter test --exclude-tags network
+      - run: flutter build windows --release

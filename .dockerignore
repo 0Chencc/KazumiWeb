@@ -1,0 +1,11 @@
+.git
+build/
+.dart_tool/
+docs/
+NOTES.md
+CLAUDE.md
+*.md
+!README.md
+windows/
+macos/
+test/

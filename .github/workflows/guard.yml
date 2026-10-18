@@ -1,0 +1,32 @@
+# 提交内容守卫：不允许仅改动 Markdown 的提交 / PR。
+name: Guard
+
+on:
+  push:
+    branches: ['**']
+  pull_request:
+
+jobs:
+  no-md-only:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v7
+        with:
+          fetch-depth: 0
+
+      - name: 拒绝仅 Markdown 的改动
+        shell: bash
+        run: |
+          if [ "${{ github.event_name }}" = pull_request ]; then
+            files=$(git diff --name-only "origin/${{ github.base_ref }}...HEAD")
+          elif git cat-file -e "${{ github.event.before }}" 2>/dev/null; then
+            files=$(git diff --name-only "${{ github.event.before }}" HEAD)
+          else
+            # 新分支 / 首次推送：只看最新一次提交
+            files=$(git show --name-only --format= HEAD)
+          fi
+          echo "$files"
+          if [ -n "$files" ] && ! grep -qvE '\.md$' <<< "$files"; then
+            echo "::error::不允许仅改动 Markdown 文件的提交"
+            exit 1
+          fi

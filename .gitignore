@@ -1,0 +1,21 @@
+# Dart / Flutter
+.dart_tool/
+build/
+.flutter-plugins
+.flutter-plugins-dependencies
+*.iml
+
+# Windows runner ephemeral
+windows/flutter/ephemeral/
+
+# IDE
+.idea/
+.vscode/
+
+# OS
+.DS_Store
+Thumbs.db
+
+# 本地辅助脚本，不进仓库
+*.py
+__pycache__/

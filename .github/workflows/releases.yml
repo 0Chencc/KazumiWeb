@@ -1,0 +1,70 @@
+# 推送 v*.*.* 标签即发布：校验版本号 → 分析与测试 → Windows 构建 → 打包上传 Release。
+#   git tag v0.3.0 && git push origin v0.3.0
+# 标签含 "-"（如 v0.3.0-beta.1）时发布为预发布版本。
+name: Release
+
+on:
+  push:
+    tags:
+      - 'v*.*.*'
+
+permissions:
+  contents: write
+
+jobs:
+  windows:
+    runs-on: windows-latest
+    steps:
+      - uses: actions/checkout@v7
+
+      # 更新检查拿 appVersion 与最新 tag 比较，两处版本号必须与 tag 一致，
+      # 否则新版本会自认为旧版本，持续提示升级。
+      - name: 校验版本号
+        shell: bash
+        run: |
+          tag="${GITHUB_REF_NAME#v}"
+          pub=$(grep -m1 '^version:' pubspec.yaml | awk '{print $2}' | cut -d+ -f1)
+          app=$(grep -oP "appVersion = '\K[^']+" lib/server.dart)
+          echo "tag=$tag pubspec=$pub appVersion=$app"
+          if [ "$tag" != "$pub" ] || [ "$tag" != "$app" ]; then
+            echo "::error::标签 $GITHUB_REF_NAME 与 pubspec.yaml ($pub) / lib/server.dart appVersion ($app) 不一致"
+            exit 1
+          fi
+
+      - uses: subosito/flutter-action@v2
+        with:
+          channel: stable
+          flutter-version: 3.44.6
+          cache: true
+
+      - run: flutter pub get
+      - run: flutter analyze
+      - run: flutter test --exclude-tags network
+
+      # 凭证缺省时弹幕与镜像检索签名不可用，其余功能不受影响
+      - name: 构建
+        run: >
+          flutter build windows --release
+          --dart-define=DANDANAPI_APPID=${{ secrets.DANDANAPI_APPID }}
+          --dart-define=DANDANAPI_KEY=${{ secrets.DANDANAPI_KEY }}
+          --dart-define=KAZUMI_APPID=${{ secrets.KAZUMI_APPID }}
+          --dart-define=KAZUMI_KEY=${{ secrets.KAZUMI_KEY }}
+
+      # 发行布局：Release 目录全部内容 + web/ 放在可执行文件旁
+      - name: 打包
+        shell: pwsh
+        run: |
+          $out = "KazumiWeb"
+          Copy-Item build/windows/x64/runner/Release $out -Recurse
+          Copy-Item web "$out/web" -Recurse
+          Compress-Archive -Path $out -DestinationPath "KazumiWeb-$env:GITHUB_REF_NAME-windows-x64.zip"
+
+      - name: 发布
+        shell: bash
+        env:
+          GH_TOKEN: ${{ github.token }}
+        run: |
+          pre=""
+          case "$GITHUB_REF_NAME" in *-*) pre="--prerelease" ;; esac
+          gh release create "$GITHUB_REF_NAME" KazumiWeb-*-windows-x64.zip \
+            --title "$GITHUB_REF_NAME" --generate-notes --verify-tag $pre
